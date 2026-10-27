@@ -18,6 +18,11 @@
 #include <thread>
 #include <vector>
 
+#ifdef CRAW_PROFILE
+#include <atomic>
+namespace craw { extern std::atomic<int64_t> gProfNs[3]; }
+#endif
+
 int main(int argc, char** argv) {
     craw::FrameDesc d{4080, 3060, 10, craw::Cfa::RGGB, 128, 0};
     std::string input;
@@ -57,6 +62,10 @@ int main(int argc, char** argv) {
         craw::encodeFrame(raw.data(), d.width, d, out, threads);
         ms.push_back(std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count());
     }
+#ifdef CRAW_PROFILE
+    std::fprintf(stderr, "profile ms/frame: extract %.2f  code %.2f\n",
+                 craw::gProfNs[0] / 1e6 / (frames + 1), craw::gProfNs[1] / 1e6 / (frames + 1));
+#endif
     std::sort(ms.begin(), ms.end());
     const double p50 = ms[ms.size() / 2], p99 = ms[std::min(ms.size() - 1, ms.size() * 99 / 100)];
     const double mpix = double(d.width) * d.height / 1e6;

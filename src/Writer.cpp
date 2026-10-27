@@ -33,7 +33,7 @@ Writer::Writer(const std::string& path, std::string_view metaJson, unsigned thre
     if (!f_) throw std::runtime_error("craw::Writer: cannot open " + path);
     std::vector<uint8_t> head{'C', 'R', 'A', 'W'};
     put<uint16_t>(head, 0);
-    put<uint16_t>(head, 1);
+    put<uint16_t>(head, 2);
     put<uint32_t>(head, 0);
     put<uint32_t>(head, 0);
     if (std::fwrite(head.data(), 1, head.size(), f_) != head.size())

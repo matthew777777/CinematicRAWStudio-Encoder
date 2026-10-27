@@ -37,3 +37,37 @@ inline uint32_t crc32c(const void* data, size_t n, uint32_t crc = 0) {
 }
 
 }  // namespace craw::detail
+
+namespace craw::detail {
+
+// CRC32C of A||B from crc(A), crc(B) and len(B) (zlib's GF(2) matrix method),
+// so frame bands can be checksummed in parallel.
+inline uint32_t crc32cCombine(uint32_t crc1, uint32_t crc2, uint64_t len2) {
+    if (len2 == 0) return crc1;
+    auto times = [](const uint32_t* mat, uint32_t vec) {
+        uint32_t sum = 0;
+        for (; vec; vec >>= 1, ++mat)
+            if (vec & 1) sum ^= *mat;
+        return sum;
+    };
+    auto square = [&](uint32_t* sq, const uint32_t* mat) {
+        for (int n = 0; n < 32; ++n) sq[n] = times(mat, mat[n]);
+    };
+    uint32_t even[32], odd[32];
+    odd[0] = 0x82F63B78u;
+    for (int n = 1; n < 32; ++n) odd[n] = 1u << (n - 1);
+    square(even, odd);
+    square(odd, even);
+    do {
+        square(even, odd);
+        if (len2 & 1) crc1 = times(even, crc1);
+        len2 >>= 1;
+        if (!len2) break;
+        square(odd, even);
+        if (len2 & 1) crc1 = times(odd, crc1);
+        len2 >>= 1;
+    } while (len2);
+    return crc1 ^ crc2;
+}
+
+}  // namespace craw::detail
