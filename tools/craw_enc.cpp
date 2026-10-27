@@ -16,7 +16,7 @@
 int main(int argc, char** argv) {
     if (argc < 3) {
         std::fprintf(stderr, "usage: craw_enc out.craw --width W --height H --bits B "
-                             "[--cfa RGGB] [--fps 30] [--codec 1|2] [--meta meta.json] frames.raw...\n");
+                             "[--cfa RGGB|GRBG|GBRG|BGGR|RGB] [--fps 30] [--codec 1|2|3] [--meta meta.json] frames.raw...\n");
         return 2;
     }
     craw::FrameDesc d;
@@ -34,7 +34,7 @@ int main(int argc, char** argv) {
         else if (a == "--cfa") {
             const std::string c = next();
             d.cfa = c == "GRBG" ? craw::Cfa::GRBG : c == "GBRG" ? craw::Cfa::GBRG
-                  : c == "BGGR" ? craw::Cfa::BGGR : craw::Cfa::RGGB;
+                  : c == "BGGR" ? craw::Cfa::BGGR : c == "RGB" ? craw::Cfa::RGB : craw::Cfa::RGGB;
         } else if (a == "--meta") {
             std::ifstream f(next());
             meta.assign(std::istreambuf_iterator<char>(f), {});
