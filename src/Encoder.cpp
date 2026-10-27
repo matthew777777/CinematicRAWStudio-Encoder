@@ -301,8 +301,11 @@ uint16_t defaultRiceInit(uint8_t bitDepth) {
     return static_cast<uint16_t>(std::max(1, 1 << std::max(bitDepth - 8, 0)) * 4);
 }
 
-void encodeFrame(const uint16_t* raw, size_t stride, const FrameDesc& d,
-                 std::vector<uint8_t>& out, unsigned threads) {
+namespace {
+
+// Encodes all tiles; `emit(header, tiles)` assembles the payload.
+template <typename Emit>
+void encodeTiles(const uint16_t* raw, size_t stride, const FrameDesc& d, unsigned threads, Emit&& emit) {
     if (!raw || d.width == 0 || d.height == 0 || d.width % 2 || d.height % 2 ||
         d.bitDepth < 1 || d.bitDepth > 16 || d.tile == 0 || stride < d.width ||
         static_cast<int>(d.cfa) > 3)
@@ -350,21 +353,51 @@ void encodeFrame(const uint16_t* raw, size_t stride, const FrameDesc& d,
         crc = detail::crc32cCombine(crc, bandCrc[b], uint64_t{rows} * d.width * 2);
     }
 
-    out.clear();
-    out.push_back(1);
-    out.push_back(d.bitDepth);
-    out.push_back(static_cast<uint8_t>(d.cfa));
-    out.push_back(0);
-    putU32(out, d.width);
-    putU32(out, d.height);
-    putU16(out, d.tile);
-    putU16(out, static_cast<uint16_t>(job.riceInit));
-    putU32(out, crc);
-    putU32(out, count);
+    std::vector<uint8_t> head;
+    head.reserve(24 + 4 * (size_t{count} + 1));
+    head.push_back(1);
+    head.push_back(d.bitDepth);
+    head.push_back(static_cast<uint8_t>(d.cfa));
+    head.push_back(0);
+    putU32(head, d.width);
+    putU32(head, d.height);
+    putU16(head, d.tile);
+    putU16(head, static_cast<uint16_t>(job.riceInit));
+    putU32(head, crc);
+    putU32(head, count);
     uint32_t off = 0;
-    putU32(out, 0);
-    for (auto& t : tiles) putU32(out, off += static_cast<uint32_t>(t.size()));
-    for (auto& t : tiles) out.insert(out.end(), t.begin(), t.end());
+    putU32(head, 0);
+    for (auto& t : tiles) putU32(head, off += static_cast<uint32_t>(t.size()));
+    emit(head, tiles);
+}
+
+}  // namespace
+
+void encodeFrame(const uint16_t* raw, size_t stride, const FrameDesc& d,
+                 std::vector<uint8_t>& out, unsigned threads) {
+    encodeTiles(raw, stride, d, threads, [&](const std::vector<uint8_t>& head,
+                                             const std::vector<std::vector<uint8_t>>& tiles) {
+        out.assign(head.begin(), head.end());
+        for (auto& t : tiles) out.insert(out.end(), t.begin(), t.end());
+    });
+}
+
+size_t encodeFrame(const uint16_t* raw, size_t stride, const FrameDesc& d, uint8_t* dst,
+                   size_t capacity, unsigned threads) {
+    size_t written = 0;
+    encodeTiles(raw, stride, d, threads, [&](const std::vector<uint8_t>& head,
+                                             const std::vector<std::vector<uint8_t>>& tiles) {
+        size_t total = head.size();
+        for (auto& t : tiles) total += t.size();
+        if (!dst || total > capacity) throw std::length_error("craw::encodeFrame: destination too small");
+        std::memcpy(dst, head.data(), head.size());
+        written = head.size();
+        for (auto& t : tiles) {
+            std::memcpy(dst + written, t.data(), t.size());
+            written += t.size();
+        }
+    });
+    return written;
 }
 
 }  // namespace craw

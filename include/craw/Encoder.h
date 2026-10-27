@@ -30,4 +30,9 @@ uint16_t defaultRiceInit(uint8_t bitDepth);
 void encodeFrame(const uint16_t* raw, size_t strideSamples, const FrameDesc& desc,
                  std::vector<uint8_t>& out, unsigned threads = 1);
 
+// Same, into caller memory (e.g. a pooled direct buffer); returns the payload
+// size. Throws std::length_error when `capacity` is too small.
+size_t encodeFrame(const uint16_t* raw, size_t strideSamples, const FrameDesc& desc,
+                   uint8_t* dst, size_t capacity, unsigned threads = 1);
+
 }  // namespace craw
