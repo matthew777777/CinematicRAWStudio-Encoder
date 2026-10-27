@@ -2,7 +2,8 @@
 //
 // craw_enc out.craw --width W --height H --bits B [--cfa RGGB] [--fps 30]
 //          [--meta meta.json] frame0.raw [frame1.raw ...]
-// Each input is one row-major frame of uint16 little-endian samples.
+// Each input is one row-major frame of uint16 little-endian samples; a
+// sidecar with the same stem and .json extension becomes its frame JSON.
 #include <craw/Writer.h>
 
 #include <cstdio>
@@ -45,7 +46,10 @@ int main(int argc, char** argv) {
             std::ifstream f(inputs[i], std::ios::binary);
             f.read(reinterpret_cast<char*>(raw.data()), raw.size() * 2);
             if (!f) { std::fprintf(stderr, "short read: %s\n", inputs[i].c_str()); return 1; }
-            w.addFrame(raw.data(), d.width, d, static_cast<int64_t>(i * 1e9 / fps));
+            std::string frameMeta = "{}";
+            const auto dot = inputs[i].rfind('.');
+            if (std::ifstream side(inputs[i].substr(0, dot) + ".json"); side) frameMeta.assign(std::istreambuf_iterator<char>(side), {});
+            w.addFrame(raw.data(), d.width, d, static_cast<int64_t>((i + 1) * 1e9 / fps), frameMeta);
         }
         w.close();
     } catch (const std::exception& e) {
