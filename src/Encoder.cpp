@@ -337,7 +337,9 @@ size_t encodeTileLive(const TileJob& j, uint32_t tx, uint32_t ty, uint32_t tw, u
     uint16_t* u1 = ubuf.data() + tw + 16;
     const int32_t first = 1 << (j.d->bitDepth - 1);
     const bool narrow = j.d->bitDepth <= 15;  // zigzag fits 16 bits
-    const size_t maxNib = (size_t{4} * th * ((tw + kBlock - 1) / kBlock) * 2 + 1) / 2;
+    // <=13-bit input needs one width nibble/block, avoiding a tile data move.
+    const int widthNibbles = j.d->bitDepth <= 13 ? 1 : 2;
+    const size_t maxNib = (size_t{4} * th * ((tw + kBlock - 1) / kBlock) * widthNibbles + 1) / 2;
     uint8_t* const nibBegin = scratch + 5;
     uint8_t* const blocks = scratch + 5 + maxNib;
     LiveBits lb{blocks};
@@ -405,7 +407,7 @@ size_t encodeTileLive(const TileJob& j, uint32_t tx, uint32_t ty, uint32_t tw, u
     scratch[1] = uint8_t(nibBytes); scratch[2] = uint8_t(nibBytes >> 8);
     scratch[3] = uint8_t(nibBytes >> 16); scratch[4] = uint8_t(nibBytes >> 24);
     const size_t dataBytes = static_cast<size_t>(lb.out - blocks);
-    std::memmove(scratch + 5 + nibBytes, blocks, dataBytes);
+    if (nibBytes != maxNib) std::memmove(scratch + 5 + nibBytes, blocks, dataBytes);
     return 5 + nibBytes + dataBytes;
 }
 
@@ -482,7 +484,10 @@ void encodeTile(const TileJob& j, uint32_t tx, uint32_t ty, uint32_t tw, uint32_
         const size_t n = size_t{tw} * th;
         // Encode in place into the tile buffer (no copy).
         (void)scratch;
-        uint8_t* dst = out.reserve(scratchBytes(j.d->tile));
+        // At most 17 bits/sample, byte aligned, plus two width nibbles.
+        // Avoid retaining the much larger Rice bound for every Live tile.
+        const size_t blocks = size_t{4} * th * ((tw + kBlock - 1) / kBlock);
+        uint8_t* dst = out.reserve(5 + blocks * 35);
         const size_t coded = encodeTileLive(j, tx, ty, tw, th, dst, u, maxSample);
         const size_t stored = 1 + 8 * n;
         if (coded < stored) {
@@ -649,6 +654,61 @@ void encodeTiles(const uint16_t* raw, size_t stride, const FrameDesc& d, unsigne
     emit(head, tiles);
 }
 
+// Recorder workers encode one frame each. Stream tiles into the caller's
+// pooled buffer so each worker retains one tile, rather than a full frame
+// of worst-case tile allocations alongside its output buffer.
+size_t encodeSerialInto(const uint16_t* raw, size_t stride, const FrameDesc& d,
+                        uint8_t* dst, size_t capacity) {
+    if (!raw || !d.width || !d.height || d.width % 2 || d.height % 2 ||
+        d.bitDepth < 1 || d.bitDepth > 16 || !d.tile || stride < d.width ||
+        static_cast<int>(d.cfa) > 3 || (d.codec != 1 && d.codec != 2))
+        throw std::invalid_argument("craw::encodeFrame: invalid frame geometry");
+    const uint32_t pw = d.width / 2, ph = d.height / 2;
+    const uint32_t nx = (pw + d.tile - 1) / d.tile, ny = (ph + d.tile - 1) / d.tile;
+    const uint32_t count = nx * ny;
+    const size_t headerBytes = 24 + 4 * (size_t{count} + 1);
+    if (!dst || headerBytes > capacity)
+        throw std::length_error("craw::encodeFrame: destination too small");
+    struct Workspace {
+        std::vector<int32_t> planes;
+        std::vector<uint32_t> u;
+        std::vector<int64_t> sums;
+        std::vector<uint8_t> scratch;
+        TileBuf tile;
+    };
+    thread_local Workspace ws;
+    if (d.codec == 1 && ws.scratch.size() < scratchBytes(d.tile))
+        ws.scratch.resize(scratchBytes(d.tile));
+    const uint16_t rice = d.riceInit ? d.riceInit : defaultRiceInit(d.bitDepth);
+    const TileJob job{raw, stride, &d, rice};
+    uint16_t maxSample = 0;
+    size_t written = headerBytes;
+    auto offset = [&](uint32_t i) {
+        const uint32_t v = static_cast<uint32_t>(written - headerBytes);
+        for (int b = 0; b < 4; ++b) dst[24 + size_t{i} * 4 + b] = uint8_t(v >> (8 * b));
+    };
+    offset(0);
+    for (uint32_t t = 0; t < count; ++t) {
+        const uint32_t tx = (t % nx) * d.tile, ty = (t / nx) * d.tile;
+        encodeTile(job, tx, ty, std::min<uint32_t>(d.tile, pw - tx), std::min<uint32_t>(d.tile, ph - ty),
+                   ws.planes, ws.u, ws.sums, ws.scratch.data(), ws.tile, maxSample);
+        if (ws.tile.size > capacity - written)
+            throw std::length_error("craw::encodeFrame: destination too small");
+        std::memcpy(dst + written, ws.tile.data.get(), ws.tile.size);
+        written += ws.tile.size;
+        offset(t + 1);
+    }
+    if (maxSample >= (1u << d.bitDepth))
+        throw std::invalid_argument("craw::encodeFrame: sample exceeds bit depth");
+    const uint32_t crc = d.frameCrc ? crcRows(raw, stride, d.width, 0, d.height) : 0;
+    std::vector<uint8_t> head{d.codec, d.bitDepth, static_cast<uint8_t>(d.cfa), uint8_t(d.frameCrc ? 0 : 1)};
+    putU32(head, d.width); putU32(head, d.height);
+    putU16(head, d.tile); putU16(head, rice);
+    putU32(head, crc); putU32(head, count);
+    std::memcpy(dst, head.data(), head.size());
+    return written;
+}
+
 }  // namespace
 
 void encodeFrame(const uint16_t* raw, size_t stride, const FrameDesc& d,
@@ -662,6 +722,7 @@ void encodeFrame(const uint16_t* raw, size_t stride, const FrameDesc& d,
 
 size_t encodeFrame(const uint16_t* raw, size_t stride, const FrameDesc& d, uint8_t* dst,
                    size_t capacity, unsigned threads) {
+    if (threads <= 1) return encodeSerialInto(raw, stride, d, dst, capacity);
     size_t written = 0;
     encodeTiles(raw, stride, d, threads, [&](const std::vector<uint8_t>& head,
                                              const std::vector<TileBuf>& tiles) {

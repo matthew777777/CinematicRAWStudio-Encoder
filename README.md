@@ -34,6 +34,16 @@ Encode on worker threads and commit in order (what RawLens does):
 size_t n = craw::encodeFrame(raw16, stride, d, dst, capacity);  // any thread, into your buffer
 w.addEncodedFrame(dst, n, timestampNs, frameJson);              // committer thread, no copy
 ```
+For live capture, set `d.codec = 2` (CRAW-Live); codec 1 (CRAW-Fast)
+favors smaller files. Both preserve every RAW sample. With either mode,
+`d.frameCrc = false` avoids a raw-frame checksum pass when the payload is
+written into a CRC32C-protected CRAW container. Readers must verify that
+chunk CRC; standalone payloads then have no checksum.
+
+The caller-buffer overload with one thread streams tiles into the supplied
+buffer and retains only one tile of workspace. This limits memory pressure
+when several recorder workers encode full-resolution frames concurrently.
+
 `encodeFrame(..., threads)` also splits one frame over tiles. A sample above
 `2^bitDepth` throws `std::invalid_argument` (RawLens retries at 16 bits).
 
@@ -42,7 +52,7 @@ w.addEncodedFrame(dst, n, timestampNs, frameJson);              // committer thr
 | tool | usage |
 |------|-------|
 | `craw_enc` | `craw_enc out.craw --width W --height H --bits B [--cfa RGGB] [--fps 30] [--meta meta.json] f0.raw f1.raw …` (uint16 LE frames; `fN.json` sidecars become frame JSON) |
-| `craw_bench` | `craw_bench [--input frame.raw --width W --height H] [--bits 12] [--frames 30] [--threads N] [--tile 128]` |
+| `craw_bench` | `craw_bench [--input frame.raw --width W --height H] [--bits 12] [--frames 30] [--threads N] [--tile 128] [--codec 1|2] [--frame-crc 0|1] [--direct 0|1]` |
 
 ## Performance
 

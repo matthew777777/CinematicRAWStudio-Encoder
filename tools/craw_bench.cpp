@@ -27,10 +27,12 @@ int main(int argc, char** argv) {
     craw::FrameDesc d{4080, 3060, 10, craw::Cfa::RGGB, 128, 0};
     std::string input;
     int frames = 30;
+    bool direct = false;
     unsigned threads = std::max(1u, std::thread::hardware_concurrency());
     for (int i = 1; i + 1 < argc; i += 2) {
         const std::string k = argv[i], v = argv[i + 1];
-        if (k == "--input") input = v;
+        if (k == "--direct") direct = v != "0";
+        else if (k == "--input") input = v;
         else if (k == "--width") d.width = std::stoul(v);
         else if (k == "--height") d.height = std::stoul(v);
         else if (k == "--bits") d.bitDepth = static_cast<uint8_t>(std::stoi(v));
@@ -57,11 +59,19 @@ int main(int argc, char** argv) {
             }
     }
     std::vector<uint8_t> out;
-    craw::encodeFrame(raw.data(), d.width, d, out, threads);  // warm-up
+    const size_t tiles = size_t{(d.width / 2 + d.tile - 1) / d.tile} *
+                         ((d.height / 2 + d.tile - 1) / d.tile);
+    if (direct) out.resize(raw.size() * 2 + 28 + 5 * tiles);
+    size_t encodedBytes = 0;
+    auto encode = [&] {
+        if (direct) encodedBytes = craw::encodeFrame(raw.data(), d.width, d, out.data(), out.size(), threads);
+        else { craw::encodeFrame(raw.data(), d.width, d, out, threads); encodedBytes = out.size(); }
+    };
+    encode();  // warm-up
     std::vector<double> ms;
     for (int i = 0; i < frames; ++i) {
         const auto t0 = std::chrono::steady_clock::now();
-        craw::encodeFrame(raw.data(), d.width, d, out, threads);
+        encode();
         ms.push_back(std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count());
     }
 #ifdef CRAW_PROFILE
@@ -72,9 +82,9 @@ int main(int argc, char** argv) {
     const double p50 = ms[ms.size() / 2], p99 = ms[std::min(ms.size() - 1, ms.size() * 99 / 100)];
     const double mpix = double(d.width) * d.height / 1e6;
     std::printf("{\"tool\":\"craw_bench\",\"width\":%u,\"height\":%u,\"bits\":%u,\"threads\":%u,"
-                "\"frames\":%d,\"p50_ms\":%.3f,\"p99_ms\":%.3f,\"mpix_per_s\":%.1f,"
+                "\"direct\":%s,\"codec\":%u,\"frame_crc\":%s,\"frames\":%d,\"p50_ms\":%.3f,\"p99_ms\":%.3f,\"mpix_per_s\":%.1f,"
                 "\"fps\":%.2f,\"bpp\":%.3f,\"ratio\":%.3f}\n",
-                d.width, d.height, d.bitDepth, threads, frames, p50, p99, mpix / (p50 / 1e3),
-                1e3 / p50, 8.0 * out.size() / (double(d.width) * d.height),
-                double(d.bitDepth) * d.width * d.height / 8.0 / out.size());
+                d.width, d.height, d.bitDepth, threads, direct ? "true" : "false", d.codec, d.frameCrc ? "true" : "false", frames, p50, p99, mpix / (p50 / 1e3),
+                1e3 / p50, 8.0 * encodedBytes / (double(d.width) * d.height),
+                double(d.bitDepth) * d.width * d.height / 8.0 / encodedBytes);
 }

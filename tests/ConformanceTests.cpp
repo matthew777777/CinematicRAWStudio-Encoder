@@ -12,6 +12,7 @@
 #include <iterator>
 #include <regex>
 #include <string>
+#include <stdexcept>
 #include <vector>
 
 namespace fs = std::filesystem;
@@ -54,12 +55,41 @@ int main(int argc, char** argv) {
         for (unsigned threads : {1u, 4u}) {
             std::vector<uint8_t> out;
             craw::encodeFrame(raw.data(), d.width, d, out, threads);
-            const bool ok = out == expected;
+            // Exercise the recorder's direct-buffer path with padded input
+            // stride and guards on both sides of the caller-owned output.
+            std::vector<uint16_t> padded(size_t{d.width + 7} * d.height, 65535);
+            for (uint32_t y = 0; y < d.height; ++y)
+                std::copy_n(raw.data() + size_t{y} * d.width, d.width,
+                            padded.data() + size_t{y} * (d.width + 7));
+            std::vector<uint8_t> direct(expected.size() + 32, 0xA5);
+            const size_t n = craw::encodeFrame(padded.data(), d.width + 7, d,
+                                               direct.data() + 16, expected.size(), threads);
+            bool ok = out == expected && n == expected.size() &&
+                std::equal(expected.begin(), expected.end(), direct.begin() + 16) &&
+                std::all_of(direct.begin(), direct.begin() + 16, [](uint8_t b) { return b == 0xA5; }) &&
+                std::all_of(direct.end() - 16, direct.end(), [](uint8_t b) { return b == 0xA5; });
+            try {
+                craw::encodeFrame(raw.data(), d.width, d, direct.data() + 16, expected.size() - 1, threads);
+                ok = false;
+            } catch (const std::length_error&) {}
+            ok &= std::all_of(direct.end() - 16, direct.end(), [](uint8_t b) { return b == 0xA5; });
             std::printf("%-6s %s threads=%u (%zu bytes)\n", ok ? "PASS" : "FAIL", name.c_str(),
                         threads, out.size());
             failures += !ok;
         }
         ++cases;
+    }
+    // Range checks must also reject input on the new direct-buffer path.
+    for (uint8_t codec : {uint8_t{1}, uint8_t{2}}) {
+        std::vector<uint16_t> raw(64 * 32, 512);
+        raw[64 * 17 + 9] = 1024;
+        std::vector<uint8_t> dst(64 * 32 * 3);
+        craw::FrameDesc d{64, 32, 10, craw::Cfa::RGGB, 16, 0};
+        d.codec = codec;
+        try {
+            craw::encodeFrame(raw.data(), 64, d, dst.data(), dst.size());
+            ++failures;
+        } catch (const std::invalid_argument&) {}
     }
     // Writer smoke test.
     {
