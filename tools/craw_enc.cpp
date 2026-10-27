@@ -16,7 +16,7 @@
 int main(int argc, char** argv) {
     if (argc < 3) {
         std::fprintf(stderr, "usage: craw_enc out.craw --width W --height H --bits B "
-                             "[--cfa RGGB] [--fps 30] [--meta meta.json] frames.raw...\n");
+                             "[--cfa RGGB] [--fps 30] [--codec 1|2] [--meta meta.json] frames.raw...\n");
         return 2;
     }
     craw::FrameDesc d;
@@ -30,6 +30,7 @@ int main(int argc, char** argv) {
         else if (a == "--height") d.height = std::stoul(next());
         else if (a == "--bits") d.bitDepth = static_cast<uint8_t>(std::stoi(next()));
         else if (a == "--fps") fps = std::stod(next());
+        else if (a == "--codec") d.codec = static_cast<uint8_t>(std::stoi(next()));
         else if (a == "--cfa") {
             const std::string c = next();
             d.cfa = c == "GRBG" ? craw::Cfa::GRBG : c == "GBRG" ? craw::Cfa::GBRG

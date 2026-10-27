@@ -2,7 +2,7 @@
 //
 // Encoder throughput benchmark. Prints one JSON object for device_bench.sh.
 //   craw_bench [--input frame.raw --width W --height H] [--bits 10] [--frames 30]
-//              [--threads N] [--tile 128]
+//              [--threads N] [--tile 128] [--codec 1|2]
 // Without --input a deterministic synthetic sensor-like frame is used.
 #include <craw/Encoder.h>
 
@@ -37,6 +37,8 @@ int main(int argc, char** argv) {
         else if (k == "--frames") frames = std::stoi(v);
         else if (k == "--threads") threads = std::stoul(v);
         else if (k == "--tile") d.tile = static_cast<uint16_t>(std::stoi(v));
+        else if (k == "--codec") d.codec = static_cast<uint8_t>(std::stoi(v));
+        else if (k == "--frame-crc") d.frameCrc = v != "0";
         else { std::fprintf(stderr, "unknown option %s\n", k.c_str()); return 2; }
     }
     std::vector<uint16_t> raw(size_t{d.width} * d.height);

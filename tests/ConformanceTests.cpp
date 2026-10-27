@@ -5,6 +5,7 @@
 #include <craw/Encoder.h>
 #include <craw/Writer.h>
 
+#include <algorithm>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
@@ -44,6 +45,8 @@ int main(int argc, char** argv) {
         d.bitDepth = static_cast<uint8_t>(fieldInt(obj, "bit_depth"));
         d.cfa = static_cast<craw::Cfa>(fieldInt(obj, "cfa"));
         d.tile = static_cast<uint16_t>(fieldInt(obj, "tile"));
+        d.codec = static_cast<uint8_t>(std::max(1, fieldInt(obj, "codec")));
+        d.frameCrc = fieldInt(obj, "frame_crc") != 0;
         const auto rawBytes = slurp(dir / (name + ".raw"));
         std::vector<uint16_t> raw(rawBytes.size() / 2);
         for (size_t i = 0; i < raw.size(); ++i) raw[i] = rawBytes[2 * i] | (rawBytes[2 * i + 1] << 8);
