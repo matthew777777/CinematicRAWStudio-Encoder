@@ -4,6 +4,29 @@ C++20 lossless encoder and streaming container writer for `.CRAW`
 (spec: `../CinematicRAWStudio-Spec/SPEC.md`). Apache-2.0. Used by the RawLens
 Android app through JNI (vendored with `tools/sync_craw.sh` in RawLens).
 
+## Easy install: Mac, Linux and Windows
+
+Install the complete toolset once with the
+[shared installer](https://github.com/matthew777777/CinematicRAWStudio-Spec/blob/main/GETTING_STARTED.md).
+It fetches the sibling repos and dependencies automatically.
+
+Mac/Linux:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/matthew777777/CinematicRAWStudio-Spec/main/scripts/install.sh | bash
+```
+
+Windows PowerShell:
+
+```powershell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/matthew777777/CinematicRAWStudio-Spec/main/scripts/install.ps1)))
+```
+
+Open a new terminal, then use `craw` for the editor,
+`craw mount "take.craw"` for Resolve, `craw unmount` to close mounts,
+or `craw export "take.craw"` to save CinemaDNG and sound.
+
+
 ## Build
 
 ```
@@ -12,8 +35,7 @@ cmake -S . -B build -G Ninja && ninja -C build
 ./build/craw_bench --bits 12          # 4080x3060 throughput, JSON
 scripts/build_android.sh              # Release arm64-v8a with the newest NDK
 ```
-End users normally install everything with
-`../CinematicRAWStudio-Spec/scripts/install-macos.sh`.
+End users can use the shared installer above; the build commands are for developers.
 
 ## API
 
