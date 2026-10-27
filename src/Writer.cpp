@@ -73,13 +73,21 @@ void Writer::putChunk(const char* fourcc, int64_t ts, const std::vector<uint8_t>
 void Writer::addFrame(const uint16_t* raw, size_t stride, const FrameDesc& desc,
                       int64_t ts, std::string_view frameMetaJson) {
     encodeFrame(raw, stride, desc, codec_, threads_);
+    addEncodedFrame(codec_.data(), codec_.size(), ts, frameMetaJson);
+}
+
+void Writer::addEncodedFrame(const uint8_t* payload, size_t size, int64_t ts,
+                             std::string_view frameMetaJson) {
+    if (!payload || size == 0) throw std::invalid_argument("craw::Writer: empty payload");
+    if (ts <= lastFrameTs_) throw std::logic_error("craw::Writer: frame timestamp regression");
     scratch_.clear();
     put<uint64_t>(scratch_, frames_);
     put<int64_t>(scratch_, ts);
     put<uint32_t>(scratch_, static_cast<uint32_t>(frameMetaJson.size()));
     putBytes(scratch_, frameMetaJson.data(), frameMetaJson.size());
-    putBytes(scratch_, codec_.data(), codec_.size());
+    putBytes(scratch_, payload, size);
     putChunk("FRAM", ts, scratch_);
+    lastFrameTs_ = ts;
     ++frames_;
 }
 

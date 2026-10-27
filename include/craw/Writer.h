@@ -7,6 +7,7 @@
 
 #include <craw/Encoder.h>
 
+#include <cstdint>
 #include <cstdio>
 #include <string>
 #include <string_view>
@@ -32,6 +33,11 @@ public:
 
     void addFrame(const uint16_t* raw, size_t strideSamples, const FrameDesc& desc,
                   int64_t timestampNs, std::string_view frameMetaJson = "{}");
+    // Appends a payload produced by encodeFrame() (possibly on another thread).
+    // Lets callers encode on N workers and commit in order on one thread.
+    // Throws std::logic_error when `timestampNs` does not increase.
+    void addEncodedFrame(const uint8_t* payload, size_t size, int64_t timestampNs,
+                         std::string_view frameMetaJson = "{}");
     void addAudio(int64_t timestampNs, AudioFormat format, uint8_t channels,
                   uint32_t sampleRate, const void* samples, uint32_t frameCount);
     void addImu(ImuSensor sensor, const ImuSample* samples, uint32_t count);
@@ -49,6 +55,7 @@ private:
     std::FILE* f_ = nullptr;
     uint64_t pos_ = 0;
     uint64_t frames_ = 0;
+    int64_t lastFrameTs_ = INT64_MIN;
     unsigned threads_;
     std::vector<IndexEntry> index_;
     std::vector<uint8_t> scratch_, codec_;
