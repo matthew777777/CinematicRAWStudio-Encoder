@@ -50,7 +50,10 @@ public:
 
 private:
     struct IndexEntry { char fourcc[4]; uint64_t offset; int64_t ts; };
+    struct Part { const void* data; size_t size; };
     void putChunk(const char* fourcc, int64_t ts, const std::vector<uint8_t>& payload);
+    // Writes one chunk whose payload is the concatenation of `parts` (no copy).
+    void putChunkParts(const char* fourcc, int64_t ts, const Part* parts, size_t count);
 
     std::FILE* f_ = nullptr;
     uint64_t pos_ = 0;

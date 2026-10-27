@@ -51,22 +51,34 @@ Writer::~Writer() {
 }
 
 void Writer::putChunk(const char* fourcc, int64_t ts, const std::vector<uint8_t>& payload) {
+    const Part part{payload.data(), payload.size()};
+    putChunkParts(fourcc, ts, &part, 1);
+}
+
+void Writer::putChunkParts(const char* fourcc, int64_t ts, const Part* parts, size_t count) {
     if (!f_) throw std::runtime_error("craw::Writer: closed");
     IndexEntry e{};
     std::memcpy(e.fourcc, fourcc, 4);
     e.offset = pos_;
     e.ts = ts;
+    uint64_t size = 0;
+    uint32_t crc = 0;
+    for (size_t i = 0; i < count; ++i) {
+        size += parts[i].size;
+        crc = detail::crc32c(parts[i].data, parts[i].size, crc);
+    }
     std::vector<uint8_t> head;
     putBytes(head, fourcc, 4);
     put<uint32_t>(head, 0);
-    put<uint64_t>(head, payload.size());
+    put<uint64_t>(head, size);
     std::vector<uint8_t> tail;
-    put<uint32_t>(tail, detail::crc32c(payload.data(), payload.size()));
-    if (std::fwrite(head.data(), 1, head.size(), f_) != head.size() ||
-        std::fwrite(payload.data(), 1, payload.size(), f_) != payload.size() ||
-        std::fwrite(tail.data(), 1, tail.size(), f_) != tail.size())
-        throw std::runtime_error("craw::Writer: write failed");
-    pos_ += head.size() + payload.size() + tail.size();
+    put<uint32_t>(tail, crc);
+    bool ok = std::fwrite(head.data(), 1, head.size(), f_) == head.size();
+    for (size_t i = 0; ok && i < count; ++i)
+        ok = std::fwrite(parts[i].data, 1, parts[i].size, f_) == parts[i].size;
+    ok = ok && std::fwrite(tail.data(), 1, tail.size(), f_) == tail.size();
+    if (!ok) throw std::runtime_error("craw::Writer: write failed");
+    pos_ += head.size() + size + tail.size();
     index_.push_back(e);
 }
 
@@ -84,9 +96,10 @@ void Writer::addEncodedFrame(const uint8_t* payload, size_t size, int64_t ts,
     put<uint64_t>(scratch_, frames_);
     put<int64_t>(scratch_, ts);
     put<uint32_t>(scratch_, static_cast<uint32_t>(frameMetaJson.size()));
-    putBytes(scratch_, frameMetaJson.data(), frameMetaJson.size());
-    putBytes(scratch_, payload, size);
-    putChunk("FRAM", ts, scratch_);
+    const Part parts[] = {{scratch_.data(), scratch_.size()},
+                          {frameMetaJson.data(), frameMetaJson.size()},
+                          {payload, size}};
+    putChunkParts("FRAM", ts, parts, 3);
     lastFrameTs_ = ts;
     ++frames_;
 }
