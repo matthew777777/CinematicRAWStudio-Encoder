@@ -340,16 +340,31 @@ void encodeTiles(const uint16_t* raw, size_t stride, const FrameDesc& d, unsigne
     const uint32_t count = tilesX * tilesY;
     const TileJob job{raw, stride, &d, d.riceInit ? d.riceInit : defaultRiceInit(d.bitDepth)};
 
+    // Per-thread buffers survive across frames: a recorder calls this from a few
+    // long-lived worker threads, and re-allocating ~10 MB per frame costs page
+    // faults and memory reclaim on phones (measured under live capture).
+    struct Workspace {
+        std::vector<int32_t> planes;
+        std::vector<uint32_t> u;
+        std::vector<int64_t> sums;
+        std::vector<uint8_t> scratch;
+        std::vector<std::vector<uint8_t>> tiles;
+    };
+    thread_local Workspace caller;
+    auto& tiles = caller.tiles;
+    tiles.resize(count);  // inner vectors keep their capacity frame to frame
+
     // Jobs [0, tilesY) checksum one band of image rows each; the rest encode tiles.
-    std::vector<std::vector<uint8_t>> tiles(count);
     std::vector<uint32_t> bandCrc(tilesY);
     std::vector<uint16_t> maxSample(threads ? threads : 1, 0);
     std::atomic<uint32_t> next{0};
     auto worker = [&](unsigned id) {
-        std::vector<int32_t> planes;
-        std::vector<uint32_t> u;
-        std::vector<int64_t> sums;
-        std::unique_ptr<uint8_t[]> scratch(new uint8_t[scratchBytes(d.tile)]);
+        thread_local Workspace ws;
+        auto& planes = ws.planes;
+        auto& u = ws.u;
+        auto& sums = ws.sums;
+        if (ws.scratch.size() < scratchBytes(d.tile)) ws.scratch.resize(scratchBytes(d.tile));
+        uint8_t* scratch = ws.scratch.data();
         for (uint32_t jb; (jb = next.fetch_add(1)) < tilesY + count;) {
             if (jb < tilesY) {
                 const uint32_t y0 = 2 * jb * d.tile, y1 = std::min<uint32_t>(d.height, y0 + 2 * d.tile);
@@ -359,7 +374,7 @@ void encodeTiles(const uint16_t* raw, size_t stride, const FrameDesc& d, unsigne
             const uint32_t t = jb - tilesY;
             const uint32_t tx = (t % tilesX) * d.tile, ty = (t / tilesX) * d.tile;
             encodeTile(job, tx, ty, std::min<uint32_t>(d.tile, pw - tx), std::min<uint32_t>(d.tile, ph - ty),
-                       planes, u, sums, scratch.get(), tiles[t], maxSample[id]);
+                       planes, u, sums, scratch, tiles[t], maxSample[id]);
         }
     };
     threads = std::clamp(threads, 1u, count);
