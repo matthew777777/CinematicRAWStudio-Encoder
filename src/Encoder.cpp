@@ -11,7 +11,7 @@
 #include <stdexcept>
 #include <thread>
 
-#if defined(__ARM_NEON)
+#if defined(__ARM_NEON) && defined(__aarch64__)
 #include <arm_neon.h>
 #endif
 #ifdef CRAW_PROFILE
@@ -140,7 +140,7 @@ void encodePlane(BitWriter& bw, const int32_t* p, int w, int h, int32_t firstPre
         } else {
             u[0] = zigzag(row[0] - up[0]);
             int x = 1;
-#if defined(__ARM_NEON)
+#if defined(__ARM_NEON) && defined(__aarch64__)
             for (; x + 4 <= w; x += 4) {
                 const int32x4_t a = vld1q_s32(row + x - 1), b = vld1q_s32(up + x), c = vld1q_s32(up + x - 1);
                 const int32x4_t mx = vmaxq_s32(a, b), mn = vminq_s32(a, b);
@@ -156,7 +156,7 @@ void encodePlane(BitWriter& bw, const int32_t* p, int w, int h, int32_t firstPre
             const int x0 = bx * kBlock, n = std::min(kBlock, w - x0);
             int64_t s = 0;
             int x = x0;
-#if defined(__ARM_NEON)
+#if defined(__ARM_NEON) && defined(__aarch64__)
             if (n == kBlock) {
                 const uint32_t* q = u.data() + x0;
                 uint64x2_t acc = vpaddlq_u32(vld1q_u32(q));
@@ -202,7 +202,7 @@ void extractTile(const TileJob& j, const int* L, uint32_t tx, uint32_t ty, uint3
         int32_t* dst[4];
         for (int i = 0; i < 4; ++i) dst[i] = planes + i * n + size_t{y} * tw;
         uint32_t x = 0;
-#if defined(__ARM_NEON)
+#if defined(__ARM_NEON) && defined(__aarch64__)
         uint16x8_t vmx = vdupq_n_u16(mx);
         for (; x + 8 <= tw; x += 8) {
             const uint16x8x2_t a = vld2q_u16(r0 + 2 * x), b = vld2q_u16(r1 + 2 * x);
