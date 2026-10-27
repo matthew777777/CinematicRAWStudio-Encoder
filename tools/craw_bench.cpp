@@ -41,6 +41,7 @@ int main(int argc, char** argv) {
         else if (k == "--tile") d.tile = static_cast<uint16_t>(std::stoi(v));
         else if (k == "--codec") d.codec = static_cast<uint8_t>(std::stoi(v));
         else if (k == "--frame-crc") d.frameCrc = v != "0";
+        else if (k == "--pfor") d.pfor = v != "0";
         else { std::fprintf(stderr, "unknown option %s\n", k.c_str()); return 2; }
     }
     std::vector<uint16_t> raw(size_t{d.width} * d.height);

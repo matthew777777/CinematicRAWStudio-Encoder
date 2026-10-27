@@ -48,6 +48,7 @@ int main(int argc, char** argv) {
         d.tile = static_cast<uint16_t>(fieldInt(obj, "tile"));
         d.codec = static_cast<uint8_t>(std::max(1, fieldInt(obj, "codec")));
         d.frameCrc = fieldInt(obj, "frame_crc") != 0;
+        d.pfor = fieldInt(obj, "pfor") == 1;
         const auto rawBytes = slurp(dir / (name + ".raw"));
         std::vector<uint16_t> raw(rawBytes.size() / 2);
         for (size_t i = 0; i < raw.size(); ++i) raw[i] = rawBytes[2 * i] | (rawBytes[2 * i + 1] << 8);
