@@ -40,8 +40,8 @@ public:
         // when 32 are complete (the buffer has slack for the extra store).
         const int full = n_ >= 32;
         const uint32_t w = static_cast<uint32_t>(acc_ >> (n_ - 32 * full));
-        const uint32_t be = __builtin_bswap32(w);
-        std::memcpy(p_, &be, 4);
+        const uint8_t be[4] = {uint8_t(w >> 24), uint8_t(w >> 16), uint8_t(w >> 8), uint8_t(w)};
+        std::memcpy(p_, be, 4);
         p_ += 4 * full;
         n_ -= 32 * full;
     }
