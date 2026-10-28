@@ -566,6 +566,39 @@ size_t encodeTileLive2(const TileJob& j, uint32_t tx, uint32_t ty, uint32_t tw, 
                     return vreinterpretq_u16_s16(veorq_s16(vshlq_n_s16(e, 1), vshrq_n_s16(e, 15)));
                 };
                 uint16x8_t vmx = vdupq_n_u16(mx);
+                if (j.d->bitDepth <= 14 && x + 8 < tw) {
+                    // Samples < 2^14: L + U + UL + UR fits 16 bits, so predict in
+                    // 16-bit lanes ((sum + 2) >> 2 as a rounding shift). Only the
+                    // current and up rows are loaded; left, up-left and up-right
+                    // come from lane shifts of the neighbouring loads (2 loads per
+                    // 8 cells instead of 5). The look-ahead up load may read past
+                    // the tile; those lanes are never used.
+                    auto pred16 = [](uint16x8_t L, uint16x8_t U, uint16x8_t UL, uint16x8_t UR) {
+                        return vrshrq_n_u16(vaddq_u16(vaddq_u16(L, U), vaddq_u16(UL, UR)), 2);
+                    };
+                    // Lane 7 of the "previous" vectors must hold cell x - 1: load
+                    // from cell x - 1 (always inside the row) and broadcast lane 0.
+                    uint16x8x2_t prevCur = vld2q_u16(src + 2 * x - 2), prevUp = vld2q_u16(up + 2 * x - 2);
+                    for (int c = 0; c < 2; ++c) {
+                        prevCur.val[c] = vdupq_laneq_u16(prevCur.val[c], 0);
+                        prevUp.val[c] = vdupq_laneq_u16(prevUp.val[c], 0);
+                    }
+                    uint16x8x2_t uu = vld2q_u16(up + 2 * x);
+                    for (; x + 8 < tw; x += 8) {
+                        const uint16x8x2_t cur = vld2q_u16(src + 2 * x);
+                        const uint16x8x2_t nextUp = vld2q_u16(up + 2 * x + 16);
+                        vmx = vmaxq_u16(vmx, vmaxq_u16(cur.val[0], cur.val[1]));
+                        for (int c = 0; c < 2; ++c) {
+                            const uint16x8_t L = vextq_u16(prevCur.val[c], cur.val[c], 7);
+                            const uint16x8_t UL = vextq_u16(prevUp.val[c], uu.val[c], 7);
+                            const uint16x8_t UR = vextq_u16(uu.val[c], nextUp.val[c], 1);
+                            vst1q_u16((c ? u1 : u0) + x, zzv(cur.val[c], pred16(L, uu.val[c], UL, UR)));
+                        }
+                        prevCur = cur;
+                        prevUp = uu;
+                        uu = nextUp;
+                    }
+                }
                 for (; x + 8 < tw; x += 8) {
                     const uint16x8x2_t cur = vld2q_u16(src + 2 * x);
                     vmx = vmaxq_u16(vmx, vmaxq_u16(cur.val[0], cur.val[1]));
@@ -575,6 +608,22 @@ size_t encodeTileLive2(const TileJob& j, uint32_t tx, uint32_t ty, uint32_t tw, 
                     const uint16x8x2_t ur = vld2q_u16(up + 2 * x + 2);
                     vst1q_u16(u0 + x, zzv(cur.val[0], predict(l.val[0], uu.val[0], ul.val[0], ur.val[0])));
                     vst1q_u16(u1 + x, zzv(cur.val[1], predict(l.val[1], uu.val[1], ul.val[1], ur.val[1])));
+                }
+                if (x < tw && tw >= 9) {
+                    // Row end: one vector step over the last 8 cells (overlapping
+                    // cells already coded rewrites the same values) instead of up
+                    // to 7 scalar cells per row; the last cell's up-right clamps to up.
+                    x = tw - 8;
+                    const uint16x8x2_t cur = vld2q_u16(src + 2 * x);
+                    vmx = vmaxq_u16(vmx, vmaxq_u16(cur.val[0], cur.val[1]));
+                    const uint16x8x2_t l = vld2q_u16(src + 2 * x - 2);
+                    const uint16x8x2_t uu = vld2q_u16(up + 2 * x);
+                    const uint16x8x2_t ul = vld2q_u16(up + 2 * x - 2);
+                    uint16x8x2_t ur = vld2q_u16(up + 2 * x + 2);
+                    for (int c = 0; c < 2; ++c) ur.val[c] = vcopyq_laneq_u16(ur.val[c], 7, uu.val[c], 7);
+                    vst1q_u16(u0 + x, zzv(cur.val[0], predict(l.val[0], uu.val[0], ul.val[0], ur.val[0])));
+                    vst1q_u16(u1 + x, zzv(cur.val[1], predict(l.val[1], uu.val[1], ul.val[1], ur.val[1])));
+                    x = tw;
                 }
                 mx = vmaxvq_u16(vmx);
 #endif
