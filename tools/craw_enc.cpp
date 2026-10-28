@@ -16,7 +16,7 @@
 int main(int argc, char** argv) {
     if (argc < 3) {
         std::fprintf(stderr, "usage: craw_enc out.craw --width W --height H --bits B "
-                             "[--cfa RGGB|GRBG|GBRG|BGGR|RGB] [--fps 30] [--codec 1|2|3] [--meta meta.json] frames.raw...\n");
+                             "[--cfa RGGB|GRBG|GBRG|BGGR|RGB] [--fps 30] [--codec 1|2|3|4] [--meta meta.json] frames.raw...\n");
         return 2;
     }
     craw::FrameDesc d;

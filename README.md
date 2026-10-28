@@ -86,3 +86,13 @@ RawLens JNI path with storage, 653–700 MPix/s (52–56 fps).
 ## License
 
 Apache-2.0. See LICENSE and NOTICE.
+
+## Desktop Compact
+
+Set `FrameDesc::codec = 4` (or `craw_enc --codec 4`) for Desktop Compact.
+It searches four predictors per tile and explicit per-block Rice parameters;
+output is deterministic across thread counts. Codecs 1–3 retain their exact
+wire output. Codec 4 uses no external entropy library. This trades CPU for
+smaller archives and is substantially slower than Live v2. To re-encode an
+existing take while retaining its metadata and ancillary chunks, build the
+sibling Decoder tools and use `craw compact in.craw out.craw`.
