@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
-// Lossless encoder for .CRAW frame payloads: codec 1 ("CRAW-Fast") and
-// codec 2 ("CRAW-Live").
+// Lossless encoder for .CRAW frame payloads: 1 Fast, 2 Live v1,
+// 3 Live v2, 4 Compact. Names do not imply a universal speed/size ordering.
 // Wire format: CinematicRAWStudio-Spec/SPEC.md section 3.
 #pragma once
 
@@ -26,7 +26,7 @@ struct FrameDesc {
     uint16_t tile = 128;     // tile edge in plane samples
     uint16_t riceInit = 0;   // 0 = default noise class for bitDepth (codec 1)
     // 1 = CRAW-Fast (block-adaptive Rice),
-    // 2 = CRAW-Live (fixed-width block packing, ~3x cheaper; for live capture),
+    // 2 = CRAW-Live v1 (left prediction, fixed-width block packing),
     // 3 = CRAW-Live v2 (4-neighbour prediction, fixed packing),
     // 4 = CRAW-Compact (tile predictor search + explicit Rice; desktop only).
     uint8_t codec = 1;

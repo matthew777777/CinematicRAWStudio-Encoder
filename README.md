@@ -56,8 +56,11 @@ Encode on worker threads and commit in order (what RawLens does):
 size_t n = craw::encodeFrame(raw16, stride, d, dst, capacity);  // any thread, into your buffer
 w.addEncodedFrame(dst, n, timestampNs, frameJson);              // committer thread, no copy
 ```
-For live capture, set `d.codec = 2` (CRAW-Live); codec 1 (CRAW-Fast)
-favors smaller files. Both preserve every RAW sample. With either mode,
+For current RawLens Live capture, `d.codec = 3` selects CRAW-Live v2.
+Codec 2 is the older Live v1; codec 1 (CRAW-Fast) trades CPU for potentially
+smaller payloads. The size ordering depends on the scene; “Fast” is a
+historical name, not a claim that it outpaces Live. All preserve every RAW sample.
+With any mode,
 `d.frameCrc = false` avoids a raw-frame checksum pass when the payload is
 written into a CRC32C-protected CRAW container. Readers must verify that
 chunk CRC; standalone payloads then have no checksum.
@@ -74,14 +77,22 @@ when several recorder workers encode full-resolution frames concurrently.
 | tool | usage |
 |------|-------|
 | `craw_enc` | `craw_enc out.craw --width W --height H --bits B [--cfa RGGB] [--fps 30] [--meta meta.json] f0.raw f1.raw …` (uint16 LE frames; `fN.json` sidecars become frame JSON) |
-| `craw_bench` | `craw_bench [--input frame.raw --width W --height H] [--bits 12] [--frames 30] [--threads N] [--tile 128] [--codec 1|2] [--frame-crc 0|1] [--direct 0|1]` |
+| `craw_bench` | `craw_bench [--input frame.raw --width W --height H] [--bits 12] [--frames 30] [--threads N] [--tile 128] [--codec 1|2|3|4] [--frame-crc 0|1] [--direct 0|1]` |
 
 ## Performance
 
 ARM NEON for plane extraction, MED residuals and block sums; four Rice code
 words per 32-bit write; parallel frame CRC (CRC32C combine); zero-copy writes.
-MT6878 phone, 4080x3060 12-bit: ~650 MPix/s with 8 threads; through the
-RawLens JNI path with storage, 653–700 MPix/s (52–56 fps).
+Historical MT6878 reports quote ~650 MPix/s with 8 threads and 653–700 MPix/s
+through the JNI path. Exact original run output for those claims is not attached;
+they do not establish sustained camera-to-storage fps.
+
+The shared [benchmark guide](https://github.com/matthew777777/CinematicRAWStudio-Spec/blob/main/BENCHMARKS.md)
+defines codec IDs, evidence limits and the reproducible CRAW/JPEG XL comparison.
+The [comparison driver](https://github.com/matthew777777/CinematicRAWStudio-Spec/tree/main/bench/comparison)
+measures identical RAW samples, size, encode/decode wall and CPU time, process
+peak RSS and sustained isolated phone loops. Results are separate from capture
+acceptance. [2026-10-30 results](https://github.com/matthew777777/CinematicRAWStudio-Spec/tree/main/results/comparison-20261030).
 
 ## License
 
