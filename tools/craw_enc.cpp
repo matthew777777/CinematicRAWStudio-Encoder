@@ -17,6 +17,8 @@ int main(int argc, char** argv) {
     if (argc < 3) {
         std::fprintf(stderr, "usage: craw_enc out.craw --width W --height H --bits B "
                              "[--cfa RGGB|GRBG|GBRG|BGGR|RGB] [--fps 30] [--codec 1|2|3|4] [--meta meta.json] frames.raw...\n");
+        for (uint8_t codec = 1; codec <= 4; ++codec)
+            std::fprintf(stderr, "  --codec %u: %s\n", codec, craw::codecDisplayName(codec));
         return 2;
     }
     craw::FrameDesc d;

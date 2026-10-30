@@ -56,8 +56,8 @@ Encode on worker threads and commit in order (what RawLens does):
 size_t n = craw::encodeFrame(raw16, stride, d, dst, capacity);  // any thread, into your buffer
 w.addEncodedFrame(dst, n, timestampNs, frameJson);              // committer thread, no copy
 ```
-For current RawLens Live capture, `d.codec = 3` selects CRAW-Live v2.
-Codec 2 is the older Live v1; codec 1 (CRAW-Fast) trades CPU for potentially
+For current RawLens Live capture, `d.codec = 3` selects CRAW Live (formerly CRAW-Live v2).
+Codec 2 is CRAW Live v1 — Legacy; codec 1 (CRAW Balanced, formerly CRAW-Fast) trades CPU for potentially
 smaller payloads. The size ordering depends on the scene; “Fast” is a
 historical name, not a claim that it outpaces Live. All preserve every RAW sample.
 With any mode,
@@ -98,12 +98,29 @@ acceptance. [2026-10-30 results](https://github.com/matthew777777/CinematicRAWSt
 
 Apache-2.0. See LICENSE and NOTICE.
 
-## Desktop Compact
+## CRAW Compact — Offline
 
-Set `FrameDesc::codec = 4` (or `craw_enc --codec 4`) for Desktop Compact.
+Set `FrameDesc::codec = 4` (or `craw_enc --codec 4`) for CRAW Compact — Offline.
 It searches four predictors per tile and explicit per-block Rice parameters;
 output is deterministic across thread counts. Codecs 1–3 retain their exact
 wire output. Codec 4 uses no external entropy library. This trades CPU for
 smaller archives and is substantially slower than Live v2. To re-encode an
 existing take while retaining its metadata and ancillary chunks, build the
 sibling Decoder tools and use `craw compact in.craw out.craw`.
+
+
+## Codec display names
+
+| ID | Display name | Historical names / aliases |
+|---:|---|---|
+| 1 | **CRAW Balanced** | CRAW-Fast, Fast |
+| 2 | **CRAW Live v1 — Legacy** | CRAW-Live, CRAW-Live v1, Live v1 |
+| 3 | **CRAW Live** | CRAW-Live v2, Live v2 |
+| 4 | **CRAW Compact — Offline** | CRAW-Compact, Desktop Compact |
+
+These are display names. Codec IDs, encoded bytes, saved numeric preferences
+and legacy metadata strings retain their existing meanings. Existing recordings
+are not rewritten. Historical benchmark reports keep their original labels;
+use the IDs to match them to this table. Balanced describes the intended
+size/CPU tradeoff, not a guarantee of the smallest files. Live is the current
+recording choice; Live v1 is retained for compatibility and Compact is offline.
