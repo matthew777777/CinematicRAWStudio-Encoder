@@ -124,3 +124,14 @@ are not rewritten. Historical benchmark reports keep their original labels;
 use the IDs to match them to this table. Balanced describes the intended
 size/CPU tradeoff, not a guarantee of the smallest files. Live is the current
 recording choice; Live v1 is retained for compatibility and Compact is offline.
+
+
+### DCG/DSG RAW14 input
+
+Set `FrameDesc::bitDepth = 14` for a verified 14-bit capture stream. The encoder
+already supports 1–16 bits and preserves the original sample codes; it must not
+infer a 10-bit payload from stale static camera white-level metadata. Values
+outside the declared range are rejected rather than silently truncated. Black
+and white calibration remain metadata in the same code domain. The shared
+`dcg14_gbrg_codec*` golden vectors exercise all four codecs, including low bits.
+This describes storage support, not a claim about native ADC precision.
